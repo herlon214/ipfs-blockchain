@@ -5,10 +5,9 @@ go 1.17
 require (
 	github.com/ipfs/go-ipfs v0.11.0
 	github.com/ipfs/go-ipfs-config v0.18.0
+	github.com/ipfs/go-ipfs-files v0.0.9
 	github.com/ipfs/interface-go-ipfs-core v0.5.2
-	github.com/libp2p/go-libp2p v0.17.0
 	github.com/libp2p/go-libp2p-core v0.13.0
-	github.com/multiformats/go-multiaddr v0.5.0
 )
 
 require (
@@ -70,7 +69,6 @@ require (
 	github.com/ipfs/go-ipfs-ds-help v0.1.1 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.1.0 // indirect
 	github.com/ipfs/go-ipfs-exchange-offline v0.1.1 // indirect
-	github.com/ipfs/go-ipfs-files v0.0.9 // indirect
 	github.com/ipfs/go-ipfs-keystore v0.0.2 // indirect
 	github.com/ipfs/go-ipfs-pinner v0.2.1 // indirect
 	github.com/ipfs/go-ipfs-posinfo v0.0.1 // indirect
@@ -109,6 +107,7 @@ require (
 	github.com/libp2p/go-doh-resolver v0.3.1 // indirect
 	github.com/libp2p/go-eventbus v0.2.1 // indirect
 	github.com/libp2p/go-flow-metrics v0.0.3 // indirect
+	github.com/libp2p/go-libp2p v0.17.0 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.1.0 // indirect
 	github.com/libp2p/go-libp2p-autonat v0.7.0 // indirect
 	github.com/libp2p/go-libp2p-blankhost v0.3.0 // indirect
@@ -161,6 +160,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.0.3 // indirect
 	github.com/multiformats/go-base36 v0.1.0 // indirect
+	github.com/multiformats/go-multiaddr v0.5.0 // indirect
 	github.com/multiformats/go-multiaddr-dns v0.3.1 // indirect
 	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
 	github.com/multiformats/go-multibase v0.0.3 // indirect
