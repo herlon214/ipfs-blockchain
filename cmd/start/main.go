@@ -6,12 +6,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/peerstore"
-	"github.com/multiformats/go-multiaddr"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -19,6 +13,16 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/herlon214/ipfs-blockchain/pkg/channel"
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peerstore"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
+	"github.com/multiformats/go-multiaddr"
 
 	config "github.com/ipfs/go-ipfs-config"
 	files "github.com/ipfs/go-ipfs-files"
@@ -32,9 +36,16 @@ import (
 	"github.com/libp2p/go-libp2p-core/crypto"
 )
 
+// DiscoveryInterval is how often we re-publish our mDNS records.
+const DiscoveryInterval = time.Hour
+
+// DiscoveryServiceTag is used in our mDNS advertisements to discover other chat peers.
+const DiscoveryServiceTag = "blockchain"
+
 type Message struct {
-	Type string `json:"type"`
-	Data string `json:"data"`
+	PeerID string `json:"peerId"`
+	Type   string `json:"type"`
+	Data   string `json:"data"`
 }
 
 type Blocks struct {
@@ -46,6 +57,8 @@ var connectedPeers = make([]string, 0)
 var mx sync.Mutex
 var blocks = make(map[string]string, 0) // cid -> filename
 var ipfs icore.CoreAPI
+var currentHost host.Host
+var ps *pubsub.PubSub
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
@@ -84,7 +97,7 @@ func main() {
 
 	// libp2p.New constructs a new libp2p Host.
 	// Other options can be added here.
-	host, err := libp2p.New(
+	currentHost, err = libp2p.New(
 		libp2p.ListenAddrs(sourceMultiAddr),
 		libp2p.Identity(prvKey),
 	)
@@ -93,28 +106,12 @@ func main() {
 	}
 
 	fmt.Println("Started node...")
-	log.Printf("Current node /ip4/127.0.0.1/tcp/%v/p2p/%s'\n", *port, host.ID().Pretty())
-	for _, addr := range host.Addrs() {
+	log.Printf("Current node /ip4/127.0.0.1/tcp/%v/p2p/%s'\n", *port, currentHost.ID().Pretty())
+	for _, addr := range currentHost.Addrs() {
 		fmt.Println(addr.String())
 	}
 
-	host.SetStreamHandler("/blockchain/1.0.0", handleStream)
-
-	// Connect to destination
-	if *destAddr != "" {
-		fmt.Println("Connecting to", *destAddr)
-		rw, err := startPeerAndConnect(ctx, host, *destAddr)
-		if err != nil {
-			panic(err)
-		}
-
-		mx.Lock()
-		connectedPeers = append(connectedPeers, *destAddr)
-		streams[*destAddr] = rw
-		mx.Unlock()
-
-		requestPeers(rw)
-	}
+	// currentHost.SetStreamHandler("/blockchain/1.0.0", handleStream)
 
 	fmt.Println("----------------------------")
 	fmt.Println("Starting ipfs node...")
@@ -136,8 +133,49 @@ func main() {
 		panic(err)
 	}
 
+	// Connect to destination
+	if *destAddr != "" {
+		fmt.Println("Connecting to", *destAddr)
+		err := startPeerAndConnect(ctx, currentHost, *destAddr)
+		if err != nil {
+			panic(err)
+		}
+
+		// mx.Lock()
+		// connectedPeers = append(connectedPeers, *destAddr)
+		// streams[*destAddr] = rw
+		// mx.Unlock()
+
+		// requestPeers(rw)
+	}
+
+	// Add all the current files to ipfs
+	err = filepath.Walk("./blocks", func(path string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
+
+		return uploadBlock(ctx, ipfs, path)
+	})
+
+	// create a new PubSub service using the GossipSub router
+	ps, err = pubsub.NewGossipSub(ctx, currentHost)
+	if err != nil {
+		panic(err)
+	}
+
+	// Blocks topic
+	blockChan, err := channel.NewBlockChannel(ctx, ps, currentHost.ID(), downloadBlock)
+	if err != nil {
+		panic(err)
+	}
+
 	//go printPeers()
-	go broadcastBlocks()
+	go broadcastBlocks(blockChan)
+
+	// if err := setupDiscovery(currentHost); err != nil {
+	// 	panic(err)
+	// }
 
 	fmt.Println("Waiting...")
 	// Wait forever
@@ -152,28 +190,43 @@ func printPeers() {
 	}
 }
 
-func broadcastBlocks() {
+func broadcastBlocks(blockChan *channel.BlockChannel) {
 	for {
 		time.Sleep(time.Second * 5)
-		fmt.Println("Broadcasting blocks...")
 
-		mx.Lock()
-		data, err := json.Marshal(Blocks{Items: blocks})
+		peers := currentHost.Network().Peers()
+		fmt.Println("Broadcasting blocks to", len(peers), "peers")
+
+		err := blockChan.BroadcastBlocks(blocks)
 		if err != nil {
-			panic(err)
+			fmt.Println(err)
 		}
-		mx.Unlock()
-
-		fmt.Println(string(data))
-
-		broadcastMessage(Message{
-			Type: "Blocks",
-			Data: string(data),
-		})
-
-		fmt.Println("Broadcast blocks done")
 
 	}
+}
+
+// discoveryNotifee gets notified when we find a new peer via mDNS discovery
+type discoveryNotifee struct {
+	h host.Host
+}
+
+// HandlePeerFound connects to peers discovered via mDNS. Once they're connected,
+// the PubSub system will automatically start interacting with them if they also
+// support PubSub.
+func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
+	fmt.Printf("discovered new peer %s\n", pi.ID.Pretty())
+	err := n.h.Connect(context.Background(), pi)
+	if err != nil {
+		fmt.Printf("error connecting to peer %s: %s\n", pi.ID.Pretty(), err)
+	}
+}
+
+// setupDiscovery creates an mDNS discovery service and attaches it to the libp2p Host.
+// This lets us automatically discover peers on the same LAN and connect to them.
+func setupDiscovery(h host.Host) error {
+	// setup mDNS discovery to find local peers
+	s := mdns.NewMdnsService(h, DiscoveryServiceTag, &discoveryNotifee{h: h})
+	return s.Start()
 }
 
 func uploadBlock(ctx context.Context, ipfs icore.CoreAPI, tmpFile string) error {
@@ -221,39 +274,31 @@ func downloadBlock(ctx context.Context, fileCid string, filePath string) error {
 	return nil
 }
 
-func startPeerAndConnect(ctx context.Context, h host.Host, destination string) (*bufio.ReadWriter, error) {
+func startPeerAndConnect(ctx context.Context, h host.Host, destination string) error {
 	// Turn the destination into a multiaddr.
 	maddr, err := multiaddr.NewMultiaddr(destination)
 	if err != nil {
 		log.Println(err)
-		return nil, err
+		return err
 	}
 
 	// Extract the peer ID from the multiaddr.
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
 		log.Println(err)
-		return nil, err
+		return err
 	}
 
 	// Add the destination's peer multiaddress in the peerstore.
 	// This will be used during connection and stream creation by libp2p.
 	h.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
 
-	// Start a stream with the destination.
-	// Multiaddress of the destination peer is fetched from the peerstore using 'peerId'.
-	s, err := h.NewStream(context.Background(), info.ID, "/blockchain/1.0.0")
+	err = h.Connect(ctx, *info)
 	if err != nil {
-		log.Println(err)
-		return nil, err
+		return err
 	}
-	log.Println("Established connection to destination")
 
-	handleStream(s)
-
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
-	return rw, nil
+	return nil
 }
 
 func createBlocksFolder() error {
@@ -428,6 +473,7 @@ func readData(rw *bufio.ReadWriter) {
 				}
 
 				fmt.Println("Received", len(peerBlocks.Items))
+				fmt.Println(msg.PeerID)
 
 				for cid, blockPath := range peerBlocks.Items {
 					err = downloadBlock(context.Background(), cid, blockPath)
@@ -456,6 +502,7 @@ func requestPeers(rw *bufio.ReadWriter) {
 }
 
 func sendMsg(rw *bufio.ReadWriter, msg Message) {
+	msg.PeerID = currentHost.ID().Pretty()
 	out, err := json.Marshal(msg)
 	if err != nil {
 		fmt.Println(err)
