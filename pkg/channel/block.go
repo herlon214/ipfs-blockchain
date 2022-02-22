@@ -26,7 +26,7 @@ type Blocks struct {
 	Items map[string]string `json:"items"`
 }
 
-func NewBlockChannel(ctx context.Context, ps *pubsub.PubSub, selfID peer.ID, downloadBlockFn downloadBlockFn) (*BlockChannel, error) {
+func NewBlockChannel(ctx context.Context, ps *pubsub.PubSub, selfID peer.ID) (*BlockChannel, error) {
 	topic, err := ps.Join("blockchain:v1.0.0")
 	if err != nil {
 		return nil, err
@@ -38,12 +38,11 @@ func NewBlockChannel(ctx context.Context, ps *pubsub.PubSub, selfID peer.ID, dow
 	}
 
 	bc := &BlockChannel{
-		ctx:             ctx,
-		topic:           topic,
-		sub:             sub,
-		ps:              ps,
-		selfID:          selfID,
-		downloadBlockFn: downloadBlockFn,
+		ctx:    ctx,
+		topic:  topic,
+		sub:    sub,
+		ps:     ps,
+		selfID: selfID,
 	}
 
 	go bc.ReadBlocks()
@@ -97,7 +96,7 @@ func (bc *BlockChannel) ReadBlocks() {
 		}
 
 		for cid, filepath := range blocksMsg.Items {
-			bc.downloadBlockFn(bc.ctx, cid, filepath)
+			// bc.downloadBlockFn(bc.ctx, cid, filepath)
 			fmt.Println(cid, filepath)
 		}
 	}

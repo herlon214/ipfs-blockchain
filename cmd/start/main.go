@@ -4,14 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/herlon214/ipfs-blockchain/pkg/channel"
-	"github.com/herlon214/ipfs-blockchain/pkg/data"
-	"github.com/libp2p/go-libp2p-core/crypto"
 	"log"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"time"
+
+	"github.com/herlon214/ipfs-blockchain/pkg/channel"
+	"github.com/libp2p/go-libp2p-core/crypto"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -67,25 +66,25 @@ func main() {
 		fmt.Println(addr.String())
 	}
 
-	fmt.Println("----------------------------")
-	fmt.Println("Starting ipfs node...")
-	dataLayer, err := data.New(ctx)
-	if err != nil {
-		panic(err)
-	}
+	// fmt.Println("----------------------------")
+	// fmt.Println("Starting ipfs node...")
+	// dataLayer, err := data.New(ctx)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	// Upload a new block
-	fmt.Println("Adding random file")
+	// // Upload a new block
+	// fmt.Println("Adding random file")
 
-	tmpFile, err := createRandomFile()
-	if err != nil {
-		panic(err)
-	}
+	// tmpFile, err := createRandomFile()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	err = dataLayer.UploadBlock(ctx, tmpFile)
-	if err != nil {
-		panic(err)
-	}
+	// err = dataLayer.UploadBlock(ctx, tmpFile)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	// Connect to destination
 	if *destAddr != "" {
@@ -97,13 +96,13 @@ func main() {
 	}
 
 	// Add all the current files to ipfs
-	err = filepath.Walk("./blocks", func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() {
-			return nil
-		}
+	// err = filepath.Walk("./blocks", func(path string, info os.FileInfo, err error) error {
+	// 	if info.IsDir() {
+	// 		return nil
+	// 	}
 
-		return dataLayer.UploadBlock(ctx, path)
-	})
+	// 	return dataLayer.UploadBlock(ctx, path)
+	// })
 
 	// create a new PubSub service using the GossipSub router
 	ps, err := pubsub.NewGossipSub(ctx, currentHost)
@@ -111,7 +110,7 @@ func main() {
 		panic(err)
 	}
 
-	_, err = channel.NewBlockChannel(ctx, ps, currentHost.ID(), dataLayer.DownloadBlock)
+	_, err = channel.NewBlockChannel(ctx, ps, currentHost.ID())
 	if err != nil {
 		panic(err)
 	}
