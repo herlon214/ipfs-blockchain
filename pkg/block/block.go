@@ -2,21 +2,25 @@ package block
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/gob"
+
+	"github.com/herlon214/ipfs-blockchain/pkg/transaction"
 )
 
 type Block struct {
 	Hash     []byte
-	Data     []byte
 	PrevHash []byte
 	Nonce    int
+
+	Transactions []*transaction.Transaction
 }
 
-func New(data string, prevHash []byte) *Block {
+func New(txs []*transaction.Transaction, prevHash []byte) *Block {
 	b := Block{
-		Data:     []byte(data),
-		PrevHash: prevHash,
-		Nonce:    0,
+		PrevHash:     prevHash,
+		Nonce:        0,
+		Transactions: txs,
 	}
 
 	b.DeriveHash()
@@ -43,6 +47,19 @@ func (b *Block) Serialize() []byte {
 	}
 
 	return res.Bytes()
+}
+
+func (b *Block) HashTransactions() []byte {
+	var txHashes [][]byte
+	var txHash [32]byte
+
+	for _, tx := range b.Transactions {
+		txHashes = append(txHashes, tx.ID)
+	}
+
+	txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
+
+	return txHash[:]
 }
 
 func Deserialize(data []byte) *Block {

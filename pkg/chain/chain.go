@@ -6,6 +6,7 @@ import (
 
 	"github.com/dgraph-io/badger"
 	"github.com/herlon214/ipfs-blockchain/pkg/block"
+	"github.com/herlon214/ipfs-blockchain/pkg/transaction"
 )
 
 const (
@@ -31,10 +32,13 @@ func New() *Chain {
 		itemResult, err := txn.Get([]byte("lh"))
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
-				genesis := block.New("Genesis", []byte{})
+
+				coinbaseTx := transaction.CoinBase("abb9af250a0b4c505838b512ff7dc91a944d1d7dcb1c4b5936a02b56894b2e08", "")
+				genesis := block.New([]*transaction.Transaction{coinbaseTx}, []byte{})
 				genesis.DeriveHash()
 
-				err = txn.Set(genesis.Hash, genesis.Serialize())
+				key := bytes.Join([][]byte{[]byte("block-"), genesis.Hash}, []byte{})
+				err = txn.Set(key, genesis.Serialize())
 				if err != nil {
 					return err
 				}
@@ -58,6 +62,9 @@ func New() *Chain {
 			return nil
 		})
 	})
+	if err != nil {
+		panic(err)
+	}
 
 	return &Chain{
 		Database: db,
@@ -65,7 +72,7 @@ func New() *Chain {
 	}
 }
 
-func (c *Chain) AddBlock(data string) {
+func (c *Chain) AddBlock(txs []*transaction.Transaction) {
 	var lastHash []byte
 
 	err := c.Database.View(func(txn *badger.Txn) error {
@@ -85,11 +92,12 @@ func (c *Chain) AddBlock(data string) {
 		panic(err)
 	}
 
-	newBlock := block.New(data, lastHash)
+	newBlock := block.New(txs, lastHash)
 	newBlock.DeriveHash()
 
 	err = c.Database.Update(func(txn *badger.Txn) error {
-		err := txn.Set(newBlock.Hash, newBlock.Serialize())
+		key := bytes.Join([][]byte{[]byte("block-"), newBlock.Hash}, []byte{})
+		err := txn.Set(key, newBlock.Serialize())
 		if err != nil {
 			return err
 		}
@@ -108,12 +116,13 @@ func (c *Chain) PrintBlocks() {
 	nextHash := c.LastHash
 
 	for {
-		if bytes.Compare(nextHash, []byte{}) == 0 {
+		if bytes.Equal(nextHash, []byte{}) {
 			break
 		}
 
 		err := c.Database.View(func(txn *badger.Txn) error {
-			item, err := txn.Get(nextHash)
+			key := bytes.Join([][]byte{[]byte("block-"), nextHash}, []byte{})
+			item, err := txn.Get(key)
 			if err != nil {
 				return err
 			}
@@ -123,8 +132,12 @@ func (c *Chain) PrintBlocks() {
 
 				fmt.Println("------------------------------------------")
 				fmt.Printf("Previous hash: %x\n", currentBlock.PrevHash)
-				fmt.Printf("Data in block: %s\n", currentBlock.Data)
-				fmt.Printf("Hash: %x\n", currentBlock.Hash)
+				fmt.Printf("Transactions in block: %d\n", len(currentBlock.Transactions))
+				for _, tx := range currentBlock.Transactions {
+					fmt.Println(tx.String())
+				}
+				fmt.Printf("Block hash: %x\n", currentBlock.Hash)
+				fmt.Println("------------------------------------------")
 
 				nextHash = currentBlock.PrevHash
 

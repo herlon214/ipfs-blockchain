@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"math"
 	"math/big"
 )
@@ -27,7 +26,7 @@ func (p *ProofOfWork) InitData(nonce int) []byte {
 	return bytes.Join(
 		[][]byte{
 			p.Block.PrevHash,
-			p.Block.Data,
+			p.Block.HashTransactions(),
 			ToHex(int64(nonce)),
 			ToHex(int64(Difficulty)),
 		},
@@ -45,7 +44,6 @@ func (p *ProofOfWork) Run() (int, []byte) {
 		data := p.InitData(nonce)
 		hash = sha256.Sum256(data)
 
-		fmt.Printf("\r%x", hash)
 		intHash.SetBytes(hash[:])
 
 		if intHash.Cmp(p.Target) == -1 {
@@ -54,8 +52,6 @@ func (p *ProofOfWork) Run() (int, []byte) {
 			nonce++
 		}
 	}
-
-	fmt.Println()
 
 	return nonce, hash[:]
 }
