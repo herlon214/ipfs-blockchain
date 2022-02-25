@@ -2,3 +2,5 @@
 block-repo/
 blocks/
 node*/
+*.wallet
+*.dat

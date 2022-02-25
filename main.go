@@ -1,60 +1,55 @@
 package main
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"os"
 
-	"github.com/herlon214/ipfs-blockchain/pkg/chain"
-	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/herlon214/ipfs-blockchain/cmd"
+	"github.com/herlon214/ipfs-blockchain/pkg/wallets"
 )
 
 func main() {
-	blockChain := chain.New()
-	defer blockChain.Database.Close()
+	if err := cmd.RootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	// blockChain := chain.New()
+	// defer blockChain.Database.Close()
 
 	// blockChain.AddBlock("First")
 	// blockChain.AddBlock("Second")
 	// blockChain.AddBlock("Third")
 
-	blockChain.PrintBlocks()
+	// blockChain.PrintBlocks()
 
-	herlon()
+	// herlonWallet()
 }
 
-func herlon() {
-	privKey, err := readKey("herlon.key")
+func herlonWallet() {
+	// Load wallet
+	walletFile := "herlon_wallet.dat"
+	ws, err := wallets.Load(walletFile)
 	if err != nil {
-		panic(err)
+		ws, err = wallets.New(walletFile)
+		if err != nil {
+			panic(err)
+		}
 	}
 
-	pubKey := privKey.GetPublic()
-	if err != nil {
-		panic(err)
+	defer ws.Save()
+
+	if len(ws.Items) == 0 {
+		_, err := ws.NewWallet()
+		if err != nil {
+			panic(err)
+		}
 	}
 
-	fmt.Println("Key hash", KeyHash(pubKey))
-
-}
-
-func KeyHash(key crypto.Key) string {
-	pubKeyRaw, err := key.Raw()
-	if err != nil {
-		panic(err)
+	for _, wallet := range ws.Items {
+		fmt.Println("----------------------------------")
+		fmt.Printf("Public key: %x\n", wallet.PublicKey)
+		fmt.Printf("Address: %s\n", wallet.Address())
 	}
 
-	pubHash := sha256.Sum256(pubKeyRaw)
-
-	return fmt.Sprintf("%x", pubHash[:])
-}
-
-func readKey(name string) (crypto.PrivKey, error) {
-	//Read the key file
-	keyBytes, err := os.ReadFile(name)
-	if err != nil {
-		panic(err)
-	}
-
-	// Unmarshal private key
-	return crypto.UnmarshalPrivateKey(keyBytes)
 }
